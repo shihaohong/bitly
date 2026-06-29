@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 	"github.com/shihaohong/bitly/internal/db"
 	"github.com/shihaohong/bitly/internal/links"
 	"github.com/shihaohong/bitly/internal/middleware"
+	"github.com/shihaohong/bitly/internal/web"
 )
 
 func main() {
@@ -30,6 +32,15 @@ func main() {
 	linksHandler := links.NewHandler(linksSvc)
 
 	r := gin.Default()
+
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/dashboard")
+	})
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	web.NewHandler().Register(r)
 
 	r.POST("/auth/register", authHandler.Register)
 	r.POST("/auth/login", authHandler.Login)

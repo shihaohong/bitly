@@ -30,6 +30,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build frontend
+        run: cd web && npm ci && npm run build
+
       - name: Create test database
         env:
           PGPASSWORD: postgres
@@ -37,7 +46,10 @@ jobs:
           psql -h localhost -U postgres -c "CREATE USER bitly WITH PASSWORD 'bitly';"
           psql -h localhost -U postgres -c "CREATE DATABASE bitly_test OWNER bitly;"
 
-      - name: Run tests
+      - name: Run frontend tests
+        run: cd web && npm test
+
+      - name: Run backend tests
         env:
           TEST_DATABASE_URL: postgres://bitly:bitly@localhost:5432/bitly_test
         run: go test -p 1 -race ./...

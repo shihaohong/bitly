@@ -1,76 +1,141 @@
-# bitly
+# Bitly
 
-A URL shortener REST API built in Go.
-Users register, log in, and get back a JWT they use to create, list, and delete short links.
-Anyone can follow a short link without authentication.
+A URL shortener with account-based link management, built with Go and React, deployed on GCP.
 
 ## Stack
 
-- **Go** with [Gin](https://github.com/gin-gonic/gin)
-- **PostgreSQL** (pgx/v5)
-- **JWT** for auth (HS256, 24 h expiry)
-- **Docker Compose** for local development
+| Layer | Technology |
+|---|---|
+| Backend | Go, Gin |
+| Frontend | React 18, Vite, React Router v6 |
+| Database | PostgreSQL (Cloud SQL) |
+| Auth | JWT (HS256, 24h), bcrypt |
+| Hosting | Cloud Run (`us-central1`) |
+| Registry | Artifact Registry |
+| Secrets | Secret Manager |
 
-## Endpoints
+## Project structure
+
+```
+bitly/
+├── cmd/server/         Go entrypoint
+├── internal/
+│   ├── auth/           register + login handlers and service
+│   ├── db/             pgxpool connection helper
+│   ├── links/          create / resolve / list / delete
+│   ├── middleware/     JWT auth middleware
+│   └── web/            Go embed wrapper (dist/ populated by React build)
+├── migrations/         SQL migration files
+└── web/                React + Vite source
+    └── src/
+        ├── api.js      fetch wrapper with JWT injection
+        ├── App.jsx     React Router setup
+        └── pages/      Login, Register, Dashboard
+```
+
+## Local development
+
+### Prerequisites
+
+- Go 1.25+
+- Node 22+
+- Docker (for Postgres)
+
+### 1. Start Postgres
+
+```bash
+docker compose up db
+```
+
+### 2. Run migrations
+
+```bash
+psql postgres://bitly:bitly@localhost:5432/bitly -f migrations/001_initial.sql
+```
+
+### 3. Start the API server
+
+```bash
+cp .env.example .env
+go run ./cmd/server
+```
+
+### 4. Start the React dev server (separate terminal)
+
+```bash
+cd web && npm install && npm run dev
+```
+
+Open `http://localhost:5173`.
+Vite proxies `/api` and `/auth` to the Go server on port 8080.
+
+## Frontend tests
+
+```bash
+cd web
+npm test            # run once
+npm run test:watch  # watch mode
+```
+
+19 unit tests covering Login, Register, and Dashboard components.
+
+## Building for production (embedded)
+
+The Dockerfile builds in two stages: Node builds the React app, then Go embeds `dist/` into the binary.
+To replicate locally:
+
+```bash
+cd web && npm run build   # outputs to internal/web/dist/
+cd .. && go build ./cmd/server
+```
+
+## Deployment (GCP)
+
+GCP project: `shihao-bitly` | Region: `us-central1`
+
+**Build and push image:**
+```bash
+gcloud builds submit \
+  --config=cloudbuild.yaml \
+  --project=shihao-bitly \
+  --substitutions=COMMIT_SHA=latest .
+```
+
+**Deploy to Cloud Run:**
+```bash
+gcloud run deploy bitly \
+  --image=us-central1-docker.pkg.dev/shihao-bitly/bitly/server:latest \
+  --region=us-central1 \
+  --project=shihao-bitly
+```
+
+**Live URL:** https://bitly-910354525392.us-central1.run.app
+
+## API
 
 | Method | Path | Auth | Description |
-|--------|------|------|-------------|
+|---|---|---|---|
 | POST | `/auth/register` | - | Create account |
 | POST | `/auth/login` | - | Get JWT token |
 | GET | `/:code` | - | Redirect to original URL |
-| POST | `/api/links` | JWT | Shorten a URL |
-| GET | `/api/links` | JWT | List your links |
-| DELETE | `/api/links/:code` | JWT | Delete a link |
-
-## Running locally
-
-**With Docker Compose (recommended):**
-
-```bash
-cp .env.example .env
-docker compose up
-```
-
-**Without Docker** (requires a running PostgreSQL instance):
-
-```bash
-cp .env.example .env
-# Edit .env with your DATABASE_URL, then apply the schema:
-psql "$DATABASE_URL" -f migrations/001_initial.sql
-go run ./cmd/server/main.go
-```
-
-The server starts on `http://localhost:8080`.
-
-## Running tests
-
-Tests require a PostgreSQL instance.
-By default they connect to `postgres://bitly:bitly@localhost:5432/bitly_test` - create that database once:
-
-```bash
-psql -c "CREATE USER bitly WITH PASSWORD 'bitly';"
-psql -c "CREATE DATABASE bitly_test OWNER bitly;"
-```
-
-Then run all tests:
-
-```bash
-go test -p 1 ./...
-```
-
-The `-p 1` flag is required because tests across packages share the same database and must not run concurrently.
-To target a different test database, set `TEST_DATABASE_URL` before running.
+| POST | `/api/links` | Bearer | Create short link |
+| GET | `/api/links` | Bearer | List your links |
+| DELETE | `/api/links/:code` | Bearer | Delete a link |
+| GET | `/health` | - | Health check |
 
 ## Environment variables
 
 | Variable | Description |
-|----------|-------------|
+|---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret key for signing JWTs - change in production |
+| `JWT_SECRET` | HS256 signing secret |
 | `PORT` | HTTP port (default `8080`) |
 
-## Schema
+## Adding migrations
 
-Migrations live in `migrations/` and are applied automatically by Docker Compose on first run.
-Short codes are 7-character random alphanumeric strings.
-Click counts are incremented atomically on each redirect.
+```bash
+/tmp/cloud-sql-proxy shihao-bitly:us-central1:bitly-db --port=5433 &
+DB_PASS=$(gcloud secrets versions access latest --secret=db-password --project=shihao-bitly)
+PGPASSWORD="$DB_PASS" psql "host=127.0.0.1 port=5433 dbname=bitly user=bitly" \
+  -f migrations/002_your_migration.sql
+```
