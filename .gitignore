@@ -1,2 +1,4 @@
 .env
 /server
+/internal/web/dist/
+/web/node_modules/
