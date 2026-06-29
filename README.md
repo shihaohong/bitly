@@ -11,8 +11,6 @@ A URL shortener with account-based link management, built with Go and React, dep
 | Database | PostgreSQL (Cloud SQL) |
 | Auth | JWT (HS256, 24h), bcrypt |
 | Hosting | Cloud Run (`us-central1`) |
-| Registry | Artifact Registry |
-| Secrets | Secret Manager |
 
 ## Project structure
 
@@ -27,62 +25,49 @@ bitly/
 │   └── web/            Go embed wrapper (dist/ populated by React build)
 ├── migrations/         SQL migration files
 └── web/                React + Vite source
-    └── src/
-        ├── api.js      fetch wrapper with JWT injection
-        ├── App.jsx     React Router setup
-        └── pages/      Login, Register, Dashboard
 ```
 
 ## Local development
 
-### Prerequisites
-
-- Go 1.25+
-- Node 22+
-- Docker (for Postgres)
-
-### 1. Start Postgres
+**Prerequisites:** Go 1.25+, Node 22+, Docker (for Postgres)
 
 ```bash
+# 1. Start Postgres
 docker compose up db
-```
 
-### 2. Run migrations
-
-```bash
+# 2. Run migrations
 psql postgres://bitly:bitly@localhost:5432/bitly -f migrations/001_initial.sql
-```
 
-### 3. Start the API server
-
-```bash
+# 3. Start the API server
 cp .env.example .env
 go run ./cmd/server
-```
 
-### 4. Start the React dev server (separate terminal)
-
-```bash
+# 4. Start the React dev server (separate terminal)
 cd web && npm install && npm run dev
 ```
 
-Open `http://localhost:5173`.
-Vite proxies `/api` and `/auth` to the Go server on port 8080.
+Open `http://localhost:5173`. Vite proxies `/api` and `/auth` to the Go server on port 8080.
 
-## Frontend tests
+## Tests
 
+**Frontend:**
 ```bash
-cd web
-npm test            # run once
-npm run test:watch  # watch mode
+cd web && npm test
 ```
 
-19 unit tests covering Login, Register, and Dashboard components.
+**Backend unit tests** (no database needed):
+```bash
+go test ./internal/links/...
+```
 
-## Building for production (embedded)
+**Backend integration + e2e tests** (requires Postgres via `docker compose up db`):
+```bash
+go test ./internal/... ./e2e/...
+```
+
+## Building for production
 
 The Dockerfile builds in two stages: Node builds the React app, then Go embeds `dist/` into the binary.
-To replicate locally:
 
 ```bash
 cd web && npm run build   # outputs to internal/web/dist/
@@ -91,25 +76,21 @@ cd .. && go build ./cmd/server
 
 ## Deployment (GCP)
 
-GCP project: `shihao-bitly` | Region: `us-central1`
+GCP project: `shihao-bitly` | Region: `us-central1` | [Live URL](https://bitly-910354525392.us-central1.run.app)
 
-**Build and push image:**
 ```bash
+# Build and push image
 gcloud builds submit \
   --config=cloudbuild.yaml \
   --project=shihao-bitly \
   --substitutions=COMMIT_SHA=latest .
-```
 
-**Deploy to Cloud Run:**
-```bash
+# Deploy to Cloud Run
 gcloud run deploy bitly \
   --image=us-central1-docker.pkg.dev/shihao-bitly/bitly/server:latest \
   --region=us-central1 \
   --project=shihao-bitly
 ```
-
-**Live URL:** https://bitly-910354525392.us-central1.run.app
 
 ## API
 
@@ -130,12 +111,3 @@ gcloud run deploy bitly \
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | HS256 signing secret |
 | `PORT` | HTTP port (default `8080`) |
-
-## Adding migrations
-
-```bash
-/tmp/cloud-sql-proxy shihao-bitly:us-central1:bitly-db --port=5433 &
-DB_PASS=$(gcloud secrets versions access latest --secret=db-password --project=shihao-bitly)
-PGPASSWORD="$DB_PASS" psql "host=127.0.0.1 port=5433 dbname=bitly user=bitly" \
-  -f migrations/002_your_migration.sql
-```
