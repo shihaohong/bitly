@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bitly
+      POSTGRES_USER: bitly
+      POSTGRES_PASSWORD: bitly
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+
+  server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://bitly:bitly@db:5432/bitly
+      JWT_SECRET: dev-secret-change-in-prod
+      PORT: "8080"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

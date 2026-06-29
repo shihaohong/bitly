@@ -1,0 +1,16 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/bitly/server:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/bitly/server:latest
+      - .
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/bitly/server:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/bitly/server:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
